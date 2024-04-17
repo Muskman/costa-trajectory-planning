@@ -10,8 +10,9 @@ Read mode about the algorithm and application in the paper here:
 To replicate the results for the application discribed in section 2 in the above paper run the main file 'experiments_final' in matlab. Figures are generated and saved in plots folder inside the main directory.
 
 Environment and configuration parameters
-Environment No.         theta
-1                       -80
-2                        80
-3                        0
-4                        40
+| Environment No. | theta    |
+| :---:   | :---: |
+| 1 | -80   |
+| 2 | 80   |
+| 3 | 0   |
+| 4 | 40   |
