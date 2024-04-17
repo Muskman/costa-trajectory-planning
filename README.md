@@ -1,4 +1,4 @@
-# Energy Efficient Trajectory Planning in Ocean Environments
+# Energy Efficient Trajectory Planning in Ocean Environments using CoSTA
 
 Matlab code for multi-agent enery efficient trajectory planning in uncertain ocean currents. The approach uses a novel recursive momentum-based accelerated successive convex approximation (SCA) algorithm named Constrained STORM Successive Convex
 Approximation (CoSTA) Algorithm. 
