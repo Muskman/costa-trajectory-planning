@@ -1,4 +1,4 @@
-function [f, energy, constraint, xk] =csscaalgo(mu1,gam,bet,xk,std_noise,K,opts)
+function [f, energy, constraint, xk, t] =csscaalgo(mu1,gam,bet,xk,std_noise,K,opts)
 
 dt = opts.dt;
 T = opts.T; 
@@ -10,8 +10,11 @@ r_obs = opts.r_obs; r_a = opts.r_a;
 e = std_noise*randn(size(xk)); % generate realization of noise
 e0 = zeros(size(xk));
 
-[g, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
-[g0, grad_f0] = disturbance(xk,e0,dt,opts);
+t = zeros(K,1);
+tStart_cs = tic;
+
+[~, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
+[g0, ~] = disturbance(xk,e0,dt,opts);
 
 y = zeros(size(xk));
 
@@ -33,16 +36,21 @@ for k =1:K
 
    P = opts.D'; P(1:2,1:2) = zeros(2);
 
-   xht = qcqp(b,C,d,P,g0,(opts.v*dt)^2,xk,opts);
-
+   xht = qcqp(b,C,d,P,g0,(opts.v*dt)^2,xk,opts); xk_old = xk;
    xk = (1-gam).*xk + gam.*xht;
+
+   t(k) = toc(tStart_cs);
    
    % next sample
    e = std_noise*randn(size(xk)); % generate realization of noise
    [C, d] = obs_constraint(xk,x_obs,r_obs+r_a,opts);
-   [g, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
-   [g0, grad_f0] = disturbance(xk,e0,dt,opts);
+   [~, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
+   [g0, ~] = disturbance(xk,e0,dt,opts);
    
+   if norm(xk-xk_old)/norm(xk_old) < 1e-6
+      fprintf('\nCSSCA Converged \n')
+      return
+   end
    % print optimization stats
    % fprintf('k: %3.0f, CSSCA: %2.6f, constraint: %d, gam: %1.6f, bet: %1.6f \n', k, f(k), constraint(k), gam, bet)
 end

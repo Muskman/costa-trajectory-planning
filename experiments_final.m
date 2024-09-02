@@ -20,8 +20,7 @@ Z = c_scale * X_lim .* exp(-(X_lim.^2 + Y_lim.^2)/m_scale^2)/m_scale;
 [U,V] = gradient(Z,0.15,0.15);
 mag = sqrt(U.^2+V.^2);
 
-plotMap = true;
-plotEnergyCV = true;
+plotMap = true; plotEnergyCV = true; plotTime = true; 
 test = 0;
 if ~test
     N = [30 60];
@@ -55,6 +54,11 @@ res.SCA_cv_var = zeros(lo,lr*lq*lp);
 res.CoSTORM_cv = zeros(lo,lr*lq*lp);
 res.CoSTORM_cv_var = zeros(lo,lr*lq*lp);
 
+res.SCA_t = zeros(lo,lr*lq*lp);
+res.SCA_t_var = zeros(lo,lr*lq*lp);
+res.CoSTORM_t = zeros(lo,lr*lq*lp);
+res.CoSTORM_t_var = zeros(lo,lr*lq*lp);
+
 cBar = lo*lp*lq*lr; cProg = 0;
 oPB = textprogressbar(cBar , 'barlength', 20, ...
 'updatestep', 1, ...
@@ -65,7 +69,6 @@ oPB = textprogressbar(cBar , 'barlength', 20, ...
 'showactualnum', true, ...
 'barsymbol', '+', ...
 'emptybarsymbol', '-');
-
 
 for o = 1:length(thetas)
     for p = 1:length(N)
@@ -121,20 +124,18 @@ for o = 1:length(thetas)
                 gam = 0.025;
                 bet = 0.18;
 
-                % initialization
-                x_init = [];
+                % straignt line initialization
+                x_sl = [];
                 for j = 1:n_agents
-                    x_init_1 = x_start(2*j-1):(x_goal(2*j-1)-x_start(2*j-1))/T:x_goal(2*j-1);
-                    x_init_2 = x_start(2*j):(x_goal(2*j)-x_start(2*j))/T:x_goal(2*j);
-                    x_init_temp = [x_init_1; x_init_2];
-                    x_init_temp(:,T/2) = []; 
-                    x_init_temp = reshape(x_init_temp,2*T,1);
-                    x_init_temp(1:2) = x_start(2*j-1:2*j);
-                    x_init_temp(end-1:end) = x_goal(2*j-1:2*j);
-                    x_init = [x_init; x_init_temp];
+                    x_sl_1 = x_start(2*j-1):(x_goal(2*j-1)-x_start(2*j-1))/T:x_goal(2*j-1);
+                    x_sl_2 = x_start(2*j):(x_goal(2*j)-x_start(2*j))/T:x_goal(2*j);
+                    x_sl_temp = [x_sl_1; x_sl_2];
+                    x_sl_temp(:,T/2) = []; 
+                    x_sl_temp = reshape(x_sl_temp,2*T,1);
+                    x_sl_temp(1:2) = x_start(2*j-1:2*j);
+                    x_sl_temp(end-1:end) = x_goal(2*j-1:2*j);
+                    x_sl = [x_sl; x_sl_temp];
                 end
-                
-                xk = x_init;
 
                 % passing parameters to algorithm
                 % environment parameters
@@ -160,6 +161,13 @@ for o = 1:length(thetas)
                 energy_cost_var = zeros(K,1); energy_cs_var = zeros(K,1);
                 constraint_cost_mean = zeros(K,1); constraint_cs_mean = zeros(K,1);
                 constraint_cost_var = zeros(K,1); constraint_cs_var = zeros(K,1);
+                t_cost_mean = zeros(K,1); t_cs_mean = zeros(K,1);
+                t_cost_var = zeros(K,1); t_cs_var = zeros(K,1);
+
+                % generate feasible initial guess
+                opts.full_opt = 0;
+                [~, ~, ~, x_init] = minalgo(x_sl,std_noise,K,opts);
+                xk = x_init;
                 
                 % run algorithms
                 iPB = textprogressbar(nMC, 'barlength', 20, ...
@@ -172,9 +180,14 @@ for o = 1:length(thetas)
                     'barsymbol', '+', ...
                     'emptybarsymbol', '-');
                 for n = 1:nMC    
-                    [f_cost, energy_cost, constraint_cost, x_cost] = costscaalgo(mu,kb,cb,w,xk,std_noise,K,opts);
-                    [f_cs, energy_cs, constraint_cs, x_cs] = csscaalgo(mu1,gam,bet,xk,std_noise,K,opts);
-                    
+                    % tStart = tic; fprintf('Running CSSCA...')
+                    [f_cs, energy_cs, constraint_cs, x_cs, t_cs] = csscaalgo(mu1,gam,bet,xk,std_noise,K,opts);
+                    % t_cs = toc(tStart)-t_cost; fprintf('Done\n'); fprintf('\nRunning CoSTA...')
+                    [f_cost, energy_cost, constraint_cost, x_cost, t_cost] = costscaalgo(mu,kb,cb,w,xk,std_noise,K,opts);
+                    % t_cost = toc(tStart); fprintf('Done\n'); fprintf('Running IPM...')
+                    % [f_min, energy_min, constraint_min, x_min] = minalgo(xk,std_noise,K,opts);
+                    % t_min = toc(tStart)-t_cost-t_cs; fprintf('Done\n')
+
                     energy_cost_mean_old = energy_cost_mean; energy_cs_mean_old = energy_cs_mean; 
                     energy_cost_mean = ((n-1)*energy_cost_mean_old+energy_cost)/n;
                     energy_cs_mean = ((n-1)*energy_cs_mean_old+energy_cs)/n;
@@ -189,6 +202,13 @@ for o = 1:length(thetas)
                     constraint_cost_var = ((n-1)*constraint_cost_var + (constraint_cost-constraint_cost_mean_old).*(constraint_cost-constraint_cost_mean))/n;
                     constraint_cs_var = ((n-1)*constraint_cs_var + (constraint_cs-constraint_cs_mean_old).*(constraint_cs-constraint_cs_mean))/n;
                     
+                    t_cost_mean_old = t_cost_mean; t_cs_mean_old = t_cs_mean; 
+                    t_cost_mean = ((n-1)*t_cost_mean_old+t_cost)/n;
+                    t_cs_mean = ((n-1)*t_cs_mean_old+t_cs)/n;
+
+                    t_cost_var = ((n-1)*t_cost_var + (t_cost-t_cost_mean_old).*(t_cost-t_cost_mean))/n;
+                    t_cs_var = ((n-1)*t_cs_var + (t_cs-t_cs_mean_old).*(t_cs-t_cs_mean))/n;
+
                     iPB(n)
                 end
 
@@ -199,6 +219,14 @@ for o = 1:length(thetas)
                 
                 res.CoSTORM_cv(o,idx) = constraint_cost_mean(end); res.CoSTORM_cv_var(o,idx) = constraint_cost_var(end);
                 res.SCA_cv(o,idx) = constraint_cs_mean(end); res.SCA_cv_var(o,idx) = constraint_cs_var(end);
+
+                res.CoSTORM_t(o,idx) = t_cost_mean(end); res.CoSTORM_t_var(o,idx) = t_cost_var(end);
+                res.SCA_t(o,idx) = t_cs_mean(end); res.SCA_t_var(o,idx) = t_cs_var(end);
+
+                % opts.full_opt = 1;
+                % t_startMin = tic; 
+                % [~, ~, ~, x_minCon] = minalgo(x_init,std_noise,K,opts);
+                % t_minCon = toc(t_startMin);
 
                 if plotMap
                     figure; 
@@ -224,6 +252,7 @@ for o = 1:length(thetas)
                         plot(x_init(2*(j-1)*T+1:2:2*j*T-1),x_init(2*(j-1)*T+2:2:2*j*T),'LineWidth',2,'Color','k','LineStyle','--')
                         plot(x_cost(2*(j-1)*T+1:2:2*j*T-1),x_cost(2*(j-1)*T+2:2:2*j*T),'LineWidth',2,'Color',[0, 1, 0])
                         plot(x_cs(2*(j-1)*T+1:2:2*j*T-1),x_cs(2*(j-1)*T+2:2:2*j*T),'LineWidth',2,'Color','m')
+                        % plot(x_minCon(2*(j-1)*T+1:2:2*j*T-1),x_minCon(2*(j-1)*T+2:2:2*j*T),'LineWidth',2,'Color','r')
                         if j==1
                             shape_str = "square";
                         else
@@ -247,6 +276,7 @@ for o = 1:length(thetas)
                     end
                     if true %(thetas(o) == 0 || thetas(o) == 80)
                         legend({'Currents','Initial guess', 'CoSTA', 'CSSCA', 'Start','Goal', '', '', '',' ', ' ', ' ', ' '},'NumColumns',4,'fontweight','bold','fontsize',8,'Location','northwest'); legend boxoff
+                        % legend({'Currents','Initial guess', 'CoSTA', 'CSSCA', 'IPM', 'Start','Goal', '', '','' , '',' ', ' ', ' ', ' '},'NumColumns',4,'fontweight','bold','fontsize',8,'Location','northwest'); legend boxoff
                     end
                     if saveFigs
                         saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/map-T=',num2str(Tf),'noise=',num2str(std_noise),'.fig'),'fig')
@@ -255,31 +285,98 @@ for o = 1:length(thetas)
                 end
 
                 if plotEnergyCV
-                    % plotting energy
+                    % plotting energy vs iters
                     figure;
-                    yyaxis left
+                    % yyaxis left
                     plot(energy_cost_mean,'LineWidth',2,'Color','g','LineStyle', "-"); hold on
                     fill([1:K,fliplr(1:K)]', [energy_cost_mean+sqrt(energy_cost_var);flipud(energy_cost_mean-sqrt(energy_cost_var))],'b','FaceAlpha',0.3, 'LineStyle', "none" ,'HandleVisibility','off')
                     plot(energy_cs_mean,'LineWidth',2,'Color','m','LineStyle', "-")
                     fill([1:K,fliplr(1:K)]', [energy_cs_mean+sqrt(energy_cs_var);flipud(energy_cs_mean-sqrt(energy_cs_var))],'r','FaceAlpha',0.3, 'LineStyle', "none",'HandleVisibility','off')
                     xlabel('Iterations','fontweight','bold'); ylabel('Energy','fontweight','bold');
                     set(gca,'YColor','k');
-                    yyaxis right
-                    plot(constraint_cost_mean,'LineWidth',2,'Color','g','LineStyle', "--"); hold on
-                    fill([1:K,fliplr(1:K)]', [constraint_cost_mean+sqrt(constraint_cost_var);flipud(constraint_cost_mean-sqrt(constraint_cost_var))],'b','FaceAlpha',0.3, 'LineStyle', "none" ,'HandleVisibility','off')
-                    plot(constraint_cs_mean,'LineWidth',2,'Color','m','LineStyle', "--");
-                    fill([1:K,fliplr(1:K)]', [constraint_cs_mean+sqrt(constraint_cs_var);flipud(constraint_cs_mean-sqrt(constraint_cs_var))],'r','FaceAlpha',0.3, 'LineStyle', "none",'HandleVisibility','off')
-                    ylab = ylabel('Constraint Violation (CV)','fontweight','bold');
-                    ylab.Position(1) = 93;
-                    set(gca,'YColor','k');
-                    ylim([0 max([constraint_cost_mean; constraint_cs_mean])])
+                    % yyaxis right
+                    % plot(constraint_cost_mean,'LineWidth',2,'Color','g','LineStyle', "--"); hold on
+                    % fill([1:K,fliplr(1:K)]', [constraint_cost_mean+sqrt(constraint_cost_var);flipud(constraint_cost_mean-sqrt(constraint_cost_var))],'b','FaceAlpha',0.3, 'LineStyle', "none" ,'HandleVisibility','off')
+                    % plot(constraint_cs_mean,'LineWidth',2,'Color','m','LineStyle', "--");
+                    % fill([1:K,fliplr(1:K)]', [constraint_cs_mean+sqrt(constraint_cs_var);flipud(constraint_cs_mean-sqrt(constraint_cs_var))],'r','FaceAlpha',0.3, 'LineStyle', "none",'HandleVisibility','off')
+                    % ylab = ylabel('Constraint Violation (CV)','fontweight','bold');
+                    % ylab.Position(1) = 93;
+                    % set(gca,'YColor','k');
+                    % try
+                    %     ylim([0 max([constraint_cost_mean; constraint_cs_mean])])
+                    % catch
+                    % end
                     if true %(thetas(o) == 0 || thetas(o) == 80)
-                        legend(["CoSTA Energy", "CSSCA Energy", "CoSTA CV", "CSSCA CV"],'Location', 'NorthEast','fontweight','bold','NumColumns',2); legend boxoff
+                        % legend(["CoSTA Energy", "CSSCA Energy", "CoSTA CV", "CSSCA CV"],'Location', 'NorthEast','fontweight','bold','NumColumns',2); legend boxoff
+                        legend(["CoSTA Energy", "CSSCA Energy"],'Location', 'NorthEast','fontweight','bold'); legend boxoff
                     end
-                    
                     if saveFigs
                         saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/energy-cv-T=',num2str(Tf),'noise=',num2str(std_noise),'.fig'),'fig')
                         saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/energy-cv-T=',num2str(Tf),'noise=',num2str(std_noise),'.eps'),'epsc')
+                    end
+
+                    % plotting evenergy vs time
+                    figure;
+                    % yyaxis left
+                    plot(t_cost_mean,energy_cost_mean,'LineWidth',2,'Color','g','LineStyle', "-"); hold on
+                    fill([t_cost_mean;flipud(t_cost_mean)], [energy_cost_mean+sqrt(energy_cost_var);flipud(energy_cost_mean-sqrt(energy_cost_var))],'b','FaceAlpha',0.3, 'LineStyle', "none" ,'HandleVisibility','off')
+                    plot(t_cs_mean,energy_cs_mean,'LineWidth',2,'Color','m','LineStyle', "-")
+                    fill([t_cs_mean;flipud(t_cs_mean)], [energy_cs_mean+sqrt(energy_cs_var);flipud(energy_cs_mean-sqrt(energy_cs_var))],'r','FaceAlpha',0.3, 'LineStyle', "none",'HandleVisibility','off')
+                    xlabel('Time (s)','fontweight','bold'); ylabel('Energy','fontweight','bold');
+                    set(gca,'YColor','k');
+                    % yyaxis right
+                    % plot(t_cost_mean, constraint_cost_mean,'LineWidth',2,'Color','g','LineStyle', "--"); hold on
+                    % fill([t_cost_mean;flipud(t_cost_mean)], [constraint_cost_mean+sqrt(constraint_cost_var);flipud(constraint_cost_mean-sqrt(constraint_cost_var))],'b','FaceAlpha',0.3, 'LineStyle', "none" ,'HandleVisibility','off')
+                    % plot(t_cs_mean,constraint_cs_mean,'LineWidth',2,'Color','m','LineStyle', "--");
+                    % fill([t_cs_mean;flipud(t_cs_mean)], [constraint_cs_mean+sqrt(constraint_cs_var);flipud(constraint_cs_mean-sqrt(constraint_cs_var))],'r','FaceAlpha',0.3, 'LineStyle', "none",'HandleVisibility','off')
+                    % ylab = ylabel('Constraint Violation (CV)','fontweight','bold');
+                    % ylab.Position(1) = max([t_cost_mean; t_cs_mean])*0.95;
+                    % set(gca,'YColor','k');
+                    % try
+                    %     ylim([0 max([constraint_cost_mean; constraint_cs_mean])])
+                    % catch
+                    % end
+                    xlim([min([t_cost_mean; t_cs_mean]) max([t_cost_mean; t_cs_mean])])
+                    if true %(thetas(o) == 0 || thetas(o) == 80)
+                        % legend(["CoSTA Energy", "CSSCA Energy", "CoSTA CV", "CSSCA CV"],'Location', 'NorthEast','fontweight','bold','NumColumns',2); legend boxoff
+                        legend(["CoSTA Energy", "CSSCA Energy"],'Location', 'NorthEast','fontweight','bold'); legend boxoff
+                    end
+
+                    if saveFigs
+                        saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/energy-cv-time-T=',num2str(Tf),'noise=',num2str(std_noise),'.fig'),'fig')
+                        saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/energy-cv-time-T=',num2str(Tf),'noise=',num2str(std_noise),'.eps'),'epsc')
+                    end
+                end
+
+                if plotTime
+                    % plot average time per iteration
+                    figure
+                    algo = categorical({'CSSCA','CoSTA'});
+                    % algo = categorical({'CSSCA','CoSTA','IPM'});
+                    % per iteration time
+                    % data = [mean(diff(t_cost_mean)) mean(diff(t_cs_mean))];
+                    % err = [std(diff(t_cost_mean)) std(diff(t_cs_mean))];
+                    % total time required
+                    data = [res.SCA_t/100 res.CoSTORM_t/100];
+                    err = sqrt([res.SCA_t_var res.CoSTORM_t_var])/100;
+                    % data = [res.SCA_t res.CoSTORM_t t_minCon];
+                    % err = [res.SCA_t_var res.CoSTORM_t_var 0];
+                    hBar = barh(algo,data); 
+                    hold on; 
+                    
+                    x_e = hBar.YEndPoints;
+                    errorbar(x_e,algo,err,'horizontal','k','linestyle','none','LineWidth',2)
+                    ylabel('Algorithm', 'FontWeight','bold');
+                    xlabel('Time per iteration (sec)')
+                    title('Time', 'FontWeight','bold');
+                    ax = gca;
+                    ax.YAxis.FontWeight = 'bold';
+                    ax.XAxis.FontWeight = 'bold';
+                    ytickangle(90)
+
+                    if saveFigs
+                        saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/avg-time-T=',num2str(Tf),'noise=',num2str(std_noise),'.fig'),'fig')
+                        saveas(gcf,strcat('plots/N=',num2str(T),'/theta',num2str(theta),'/avg-time-T=',num2str(Tf),'noise=',num2str(std_noise),'.eps'),'epsc')
                     end
                 end
             end
@@ -291,3 +388,8 @@ end
 if saveMat
     save(strcat('plots/',date))
 end
+
+% fprintf('Time taken by Algorithms:\n')
+% fprintf('CSSCA : %f\n',t_cs)
+% fprintf('CoSTA : %f\n',t_cost)
+% fprintf('IPM   : %f\n',t_min)

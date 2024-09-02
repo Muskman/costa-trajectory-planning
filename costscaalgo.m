@@ -1,4 +1,4 @@
-function [f, energy, constraint, xk] = costscaalgo(mu,kb,cb,w,xk,std_noise,K,opts)
+function [f, energy, constraint, xk, t] = costscaalgo(mu,kb,cb,w,xk,std_noise,K,opts)
 
 dt = opts.dt;
 T = opts.T; 
@@ -10,8 +10,11 @@ r_obs = opts.r_obs; r_a = opts.r_a;
 e = std_noise*randn(size(xk)); % generate realization of noise
 e0 = zeros(size(xk));
 
-[g, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
-[g0, grad_f0] = disturbance(xk,e0,dt,opts);
+t = zeros(K,1);
+tStart_costa = tic;
+
+[~, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
+[g0, ~] = disturbance(xk,e0,dt,opts);
 
 z = grad_f;
 
@@ -28,12 +31,8 @@ for k = 1:K
         energy(k) = energy(k) + norm((xk(2*(j-1)*T+3:2*j*T)-xk(2*(j-1)*T+1:2*j*T-2)-dt*g0(2*(j-1)*T+1:2*j*T-2))/dt)^2;
     end
 
-    try
-        constraint(k) = sum(C*xk-d>0);
-    catch
-        % for debugging
-        keyboard
-    end
+
+    constraint(k) = sum(C*xk-d>0);
 
     w = w + mean((grad_f).^2);    
     eta = kb*(w^(-1/3));
@@ -44,19 +43,26 @@ for k = 1:K
 
     P = opts.D'; P(1:2,1:2) = zeros(2);
 
-    x = qcqp(b,C,d,P,g0,(opts.v*dt)^2,xk,opts);
+    x = qcqp(b,C,d,P,g0,(opts.v*dt)^2,xk,opts); xk_old = xk;
+    xk = (1-eta)*xk + eta*x; % xk(1:2) = x_start; xk(end-1:end) = x_goal;
     
+    t(k) = toc(tStart_costa);
+
     % next sample
     e = std_noise*randn(size(xk)); % generate realization of noise
     
     % CoSTORM SCA
-    [gn, grad_f_old] = disturbance(xk,e,dt,opts);  % wrt next sample   
-    xk = (1-eta)*xk + eta*x; % xk(1:2) = x_start; xk(end-1:end) = x_goal;
+    grad_f_old = grad_f;
+    % [~, grad_f_old] = disturbance(xk,e,dt,opts);  % wrt next sample   
     [C, d] = obs_constraint(xk,x_obs,r_obs+r_a,opts);
-    [g, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
-    [g0, grad_f0] = disturbance(xk,e0,dt,opts);
+    [~, grad_f] = disturbance(xk,e,dt,opts); % disturbance prediction and gradient of objective function
+    [g0, ~] = disturbance(xk,e0,dt,opts);
+
+    if norm(xk-xk_old)/norm(xk_old) < 1e-6
+        fprintf('\nCoSTA Converged \n')
+        return
+    end
     
     % print optimization stats
-    % fprintf('k: %3.0f, CoSTA: %2.6f, constraint: %d, eta: %1.6f, bt: %1.6f \n', k, f(k), constraint(k), norm(eta), norm(bt))
-    
+    % fprintf('k: %3.0f, CoSTA: %2.6f, constraint: %d, eta: %1.6f, bt: %1.6f \n', k, f(k), constraint(k), norm(eta), norm(bt))   
 end
