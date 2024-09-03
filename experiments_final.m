@@ -357,8 +357,8 @@ for o = 1:length(thetas)
                     % data = [mean(diff(t_cost_mean)) mean(diff(t_cs_mean))];
                     % err = [std(diff(t_cost_mean)) std(diff(t_cs_mean))];
                     % total time required
-                    data = [res.SCA_t/100 res.CoSTORM_t/100];
-                    err = sqrt([res.SCA_t_var res.CoSTORM_t_var])/100;
+                    data = [res.SCA_t(o,idx)/100 res.CoSTORM_t(o,idx)/100];
+                    err = sqrt([res.SCA_t_var(o,idx) res.CoSTORM_t_var(o,idx)])/100;
                     % data = [res.SCA_t res.CoSTORM_t t_minCon];
                     % err = [res.SCA_t_var res.CoSTORM_t_var 0];
                     hBar = barh(algo,data); 
